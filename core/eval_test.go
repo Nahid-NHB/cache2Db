@@ -77,3 +77,37 @@ func TestEvalEXPIRENonPositiveDeletesKey(t *testing.T) {
 		t.Fatalf("expected key to be deleted immediately for non-positive ttl")
 	}
 }
+
+func TestEvalTTLNoExpiry(t *testing.T) {
+	setKey("persistent", "value")
+
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+
+	go func() {
+		if err := evalTTL([]string{"persistent"}, server); err != nil {
+			t.Errorf("evalTTL error: %v", err)
+		}
+	}()
+
+	if resp := readResponse(t, client); string(resp) != ":-1\r\n" {
+		t.Fatalf("unexpected response: %q", resp)
+	}
+}
+
+func TestEvalTTLMissingKey(t *testing.T) {
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+
+	go func() {
+		if err := evalTTL([]string{"does-not-exist"}, server); err != nil {
+			t.Errorf("evalTTL error: %v", err)
+		}
+	}()
+
+	if resp := readResponse(t, client); string(resp) != ":-2\r\n" {
+		t.Fatalf("unexpected response: %q", resp)
+	}
+}

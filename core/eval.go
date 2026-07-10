@@ -32,6 +32,9 @@ func EvalAndRespond(cmd *RedisCmd, c net.Conn) error {
 	case "EXPIRE":
 		return evalEXPIRE(cmd.Args, c)
 
+	case "TTL":
+		return evalTTL(cmd.Args, c)
+
 	default:
 		return errors.New("ERR unknown command '" + cmd.Cmd + "'")
 	}
@@ -135,6 +138,16 @@ func evalEXPIRE(args []string, c net.Conn) error {
 
 	_, werr := c.Write(Encode(result, false))
 	return werr
+}
+
+func evalTTL(args []string, c net.Conn) error {
+
+	if len(args) != 1 {
+		return errors.New("ERR wrong number of arguments for 'ttl' command")
+	}
+
+	_, err := c.Write(Encode(ttlSeconds(args[0]), false))
+	return err
 }
 
 func evalEXISTS(args []string, c net.Conn) error {
