@@ -3,6 +3,8 @@ package core
 import (
 	"errors"
 	"net"
+	"strconv"
+	"time"
 )
 
 func EvalAndRespond(cmd *RedisCmd, c net.Conn) error {
@@ -26,6 +28,9 @@ func EvalAndRespond(cmd *RedisCmd, c net.Conn) error {
 
 	case "EXISTS":
 		return evalEXISTS(cmd.Args, c)
+
+	case "EXPIRE":
+		return evalEXPIRE(cmd.Args, c)
 
 	default:
 		return errors.New("ERR unknown command '" + cmd.Cmd + "'")
@@ -103,6 +108,33 @@ func evalDEL(args []string, c net.Conn) error {
 
 	_, err := c.Write(Encode(count, false))
 	return err
+}
+
+func evalEXPIRE(args []string, c net.Conn) error {
+
+	if len(args) != 2 {
+		return errors.New("ERR wrong number of arguments for 'expire' command")
+	}
+
+	seconds, err := strconv.ParseInt(args[1], 10, 64)
+	if err != nil {
+		return errors.New("ERR value is not an integer or out of range")
+	}
+
+	var ok bool
+	if seconds <= 0 {
+		ok = deleteKey(args[0])
+	} else {
+		ok = expireKey(args[0], time.Duration(seconds)*time.Second)
+	}
+
+	result := 0
+	if ok {
+		result = 1
+	}
+
+	_, werr := c.Write(Encode(result, false))
+	return werr
 }
 
 func evalEXISTS(args []string, c net.Conn) error {
