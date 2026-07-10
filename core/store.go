@@ -4,6 +4,8 @@ import (
 	"math"
 	"sync"
 	"time"
+
+	"github.com/nahid12105080/cacheDB/config"
 )
 
 type entry struct {
@@ -24,12 +26,48 @@ func setKey(k, v string) {
 	store.Lock()
 	defer store.Unlock()
 	store.data[k] = entry{value: v}
+	evictIfNeeded()
 }
 
 func setKeyWithTTL(k, v string, ttl time.Duration) {
 	store.Lock()
 	defer store.Unlock()
 	store.data[k] = entry{value: v, expiresAt: time.Now().Add(ttl)}
+	evictIfNeeded()
+}
+
+// evictIfNeeded removes one key if the store is over config.MaxKeys. It
+// must be called with the store lock already held. Preference is given to
+// evicting the key with the soonest expiry; if no key has a TTL, an
+// arbitrary key is evicted instead (Go map iteration order is randomized).
+func evictIfNeeded() {
+	if config.MaxKeys <= 0 || len(store.data) <= config.MaxKeys {
+		return
+	}
+
+	var victim string
+	var soonest time.Time
+	found := false
+
+	for k, e := range store.data {
+		if e.expiresAt.IsZero() {
+			continue
+		}
+		if !found || e.expiresAt.Before(soonest) {
+			victim = k
+			soonest = e.expiresAt
+			found = true
+		}
+	}
+
+	if !found {
+		for k := range store.data {
+			victim = k
+			break
+		}
+	}
+
+	delete(store.data, victim)
 }
 
 func getKey(k string) (string, bool) {
