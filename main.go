@@ -12,6 +12,7 @@ import (
 func setUpFlags() {
 	flag.StringVar(&config.Host, "host", config.Host, "host of the cacheDB server")
 	flag.IntVar(&config.Port, "port", config.Port, "port of the cacheDB server")
+	flag.IntVar(&config.MaxKeys, "maxkeys", config.MaxKeys, "maximum number of keys to retain before evicting (0 = unlimited)")
 	flag.Parse()
 }
 
