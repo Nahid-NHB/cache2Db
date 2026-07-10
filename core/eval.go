@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -70,14 +71,34 @@ func evalECHO(args []string, c net.Conn) error {
 
 func evalSET(args []string, c net.Conn) error {
 
-	if len(args) != 2 {
+	if len(args) != 2 && len(args) != 4 {
 		return errors.New("ERR wrong number of arguments for 'set' command")
 	}
 
-	setKey(args[0], args[1])
+	key, value := args[0], args[1]
 
-	_, err := c.Write(Encode("OK", false))
-	return err
+	if len(args) == 2 {
+		setKey(key, value)
+		_, err := c.Write(Encode("OK", false))
+		return err
+	}
+
+	amount, err := strconv.ParseInt(args[3], 10, 64)
+	if err != nil || amount <= 0 {
+		return errors.New("ERR invalid expire time in 'set' command")
+	}
+
+	switch strings.ToUpper(args[2]) {
+	case "EX":
+		setKeyWithTTL(key, value, time.Duration(amount)*time.Second)
+	case "PX":
+		setKeyWithTTL(key, value, time.Duration(amount)*time.Millisecond)
+	default:
+		return errors.New("ERR syntax error")
+	}
+
+	_, werr := c.Write(Encode("OK", false))
+	return werr
 }
 
 func evalGET(args []string, c net.Conn) error {
