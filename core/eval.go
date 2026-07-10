@@ -36,6 +36,9 @@ func EvalAndRespond(cmd *RedisCmd, c net.Conn) error {
 	case "TTL":
 		return evalTTL(cmd.Args, c)
 
+	case "SAVE":
+		return evalSAVE(cmd.Args, c)
+
 	default:
 		return errors.New("ERR unknown command '" + cmd.Cmd + "'")
 	}
@@ -169,6 +172,20 @@ func evalTTL(args []string, c net.Conn) error {
 
 	_, err := c.Write(Encode(ttlSeconds(args[0]), false))
 	return err
+}
+
+func evalSAVE(args []string, c net.Conn) error {
+
+	if len(args) != 0 {
+		return errors.New("ERR wrong number of arguments for 'save' command")
+	}
+
+	if err := Save(); err != nil {
+		return errors.New("ERR " + err.Error())
+	}
+
+	_, werr := c.Write(Encode("OK", false))
+	return werr
 }
 
 func evalEXISTS(args []string, c net.Conn) error {

@@ -3,6 +3,7 @@ package core
 import (
 	"io"
 	"net"
+	"os"
 	"testing"
 	"time"
 )
@@ -167,5 +168,43 @@ func TestEvalSETInvalidExpireSyntax(t *testing.T) {
 
 	if err := <-errCh; err == nil {
 		t.Fatalf("expected an error for invalid SET expire syntax")
+	}
+}
+
+func TestEvalSAVE(t *testing.T) {
+	withTempDumpFile(t)
+	setKey("tosave", "value")
+
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+
+	go func() {
+		if err := evalSAVE(nil, server); err != nil {
+			t.Errorf("evalSAVE error: %v", err)
+		}
+	}()
+
+	if resp := readResponse(t, client); string(resp) != "+OK\r\n" {
+		t.Fatalf("unexpected response: %q", resp)
+	}
+
+	if _, err := os.Stat(dumpFile); err != nil {
+		t.Fatalf("expected dump file to exist after SAVE: %v", err)
+	}
+}
+
+func TestEvalSAVEWithArgsErrors(t *testing.T) {
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- evalSAVE([]string{"unexpected"}, server)
+	}()
+
+	if err := <-errCh; err == nil {
+		t.Fatalf("expected an error when SAVE is given arguments")
 	}
 }
