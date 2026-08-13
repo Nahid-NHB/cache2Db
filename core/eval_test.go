@@ -208,3 +208,144 @@ func TestEvalSAVEWithArgsErrors(t *testing.T) {
 		t.Fatalf("expected an error when SAVE is given arguments")
 	}
 }
+
+func TestEvalKEYS(t *testing.T) {
+	resetStore(t)
+	setKey("foo", "value1")
+	setKey("foobar", "value2")
+	setKey("bar", "value3")
+	setKey("baz", "value4")
+
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+
+	go func() {
+		if err := evalKEYS([]string{"foo*"}, server); err != nil {
+			t.Errorf("evalKEYS error: %v", err)
+		}
+	}()
+
+	resp := readResponse(t, client)
+	// Should contain foo and foobar
+	respStr := string(resp)
+	if !(contains(respStr, "foo") && contains(respStr, "foobar")) {
+		t.Fatalf("expected 'foo' and 'foobar' in response, got: %q", resp)
+	}
+	if contains(respStr, "bar") && !contains(respStr, "foobar") {
+		t.Fatalf("expected 'bar' to not be in response (unless as part of foobar), got: %q", resp)
+	}
+}
+
+func TestEvalKEYSMatchAll(t *testing.T) {
+	resetStore(t)
+	setKey("a", "1")
+	setKey("b", "2")
+
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+
+	go func() {
+		if err := evalKEYS([]string{"*"}, server); err != nil {
+			t.Errorf("evalKEYS error: %v", err)
+		}
+	}()
+
+	resp := readResponse(t, client)
+	respStr := string(resp)
+	if !(contains(respStr, "a") && contains(respStr, "b")) {
+		t.Fatalf("expected 'a' and 'b' in response, got: %q", resp)
+	}
+}
+
+func TestEvalKEYSNoMatch(t *testing.T) {
+	resetStore(t)
+	setKey("foo", "value")
+
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+
+	go func() {
+		if err := evalKEYS([]string{"nomatch*"}, server); err != nil {
+			t.Errorf("evalKEYS error: %v", err)
+		}
+	}()
+
+	resp := readResponse(t, client)
+	// Should be an empty array
+	if string(resp) != "*0\r\n" {
+		t.Fatalf("expected empty array response, got: %q", resp)
+	}
+}
+
+func TestEvalDBSIZE(t *testing.T) {
+	resetStore(t)
+	setKey("key1", "value1")
+	setKey("key2", "value2")
+	setKey("key3", "value3")
+
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+
+	go func() {
+		if err := evalDBSIZE([]string{}, server); err != nil {
+			t.Errorf("evalDBSIZE error: %v", err)
+		}
+	}()
+
+	if resp := readResponse(t, client); string(resp) != ":3\r\n" {
+		t.Fatalf("expected ':3\\r\\n', got %q", resp)
+	}
+}
+
+func TestEvalDBSIZEEmpty(t *testing.T) {
+	resetStore(t)
+
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+
+	go func() {
+		if err := evalDBSIZE([]string{}, server); err != nil {
+			t.Errorf("evalDBSIZE error: %v", err)
+		}
+	}()
+
+	if resp := readResponse(t, client); string(resp) != ":0\r\n" {
+		t.Fatalf("expected ':0\\r\\n', got %q", resp)
+	}
+}
+
+func TestEvalDBSIZEIgnoresExpiredKeys(t *testing.T) {
+	resetStore(t)
+	setKey("persistent", "value")
+	setKeyWithTTL("expiring", "value", 10*time.Millisecond)
+
+	time.Sleep(20 * time.Millisecond)
+
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+
+	go func() {
+		if err := evalDBSIZE([]string{}, server); err != nil {
+			t.Errorf("evalDBSIZE error: %v", err)
+		}
+	}()
+
+	if resp := readResponse(t, client); string(resp) != ":1\r\n" {
+		t.Fatalf("expected ':1\\r\\n' (only persistent key), got %q", resp)
+	}
+}
+
+func contains(s, substr string) bool {
+	for i := 0; i+len(substr) <= len(s); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
+}

@@ -90,3 +90,109 @@ func TestExpireKey(t *testing.T) {
 		t.Fatalf("expected key to be gone after expiry")
 	}
 }
+
+func TestMatchGlobAsterisk(t *testing.T) {
+	tests := []struct {
+		s       string
+		pattern string
+		want    bool
+	}{
+		{"foo", "f*", true},
+		{"foobar", "f*", true},
+		{"foobar", "foo*", true},
+		{"foobar", "*bar", true},
+		{"foobar", "*o*", true},
+		{"bar", "f*", false},
+		{"", "*", true},
+		{"x", "*", true},
+	}
+
+	for _, tt := range tests {
+		if got := matchGlob(tt.s, tt.pattern); got != tt.want {
+			t.Errorf("matchGlob(%q, %q) = %v, want %v", tt.s, tt.pattern, got, tt.want)
+		}
+	}
+}
+
+func TestMatchGlobQuestion(t *testing.T) {
+	tests := []struct {
+		s       string
+		pattern string
+		want    bool
+	}{
+		{"a", "?", true},
+		{"ab", "a?", true},
+		{"abc", "a?c", true},
+		{"ab", "a?c", false},
+		{"", "?", false},
+	}
+
+	for _, tt := range tests {
+		if got := matchGlob(tt.s, tt.pattern); got != tt.want {
+			t.Errorf("matchGlob(%q, %q) = %v, want %v", tt.s, tt.pattern, got, tt.want)
+		}
+	}
+}
+
+func TestMatchGlobCharClass(t *testing.T) {
+	tests := []struct {
+		s       string
+		pattern string
+		want    bool
+	}{
+		{"a", "[abc]", true},
+		{"b", "[abc]", true},
+		{"d", "[abc]", false},
+		{"a1", "[abc]1", true},
+		{"d1", "[abc]1", false},
+	}
+
+	for _, tt := range tests {
+		if got := matchGlob(tt.s, tt.pattern); got != tt.want {
+			t.Errorf("matchGlob(%q, %q) = %v, want %v", tt.s, tt.pattern, got, tt.want)
+		}
+	}
+}
+
+func TestKeysMatching(t *testing.T) {
+	resetStore(t)
+	setKey("foo", "1")
+	setKey("foobar", "2")
+	setKey("bar", "3")
+	setKeyWithTTL("expiring", "4", 10*time.Millisecond)
+
+	time.Sleep(20 * time.Millisecond)
+
+	keys := keysMatching("*")
+	if len(keys) != 3 {
+		t.Fatalf("expected 3 non-expired keys, got %d: %v", len(keys), keys)
+	}
+
+	keys = keysMatching("foo*")
+	if len(keys) != 2 {
+		t.Fatalf("expected 2 keys matching 'foo*', got %d: %v", len(keys), keys)
+	}
+}
+
+func TestDBSize(t *testing.T) {
+	resetStore(t)
+	if dbsize() != 0 {
+		t.Fatalf("expected empty store to have size 0")
+	}
+
+	setKey("a", "1")
+	setKey("b", "2")
+	if dbsize() != 2 {
+		t.Fatalf("expected size 2, got %d", dbsize())
+	}
+
+	setKeyWithTTL("c", "3", 10*time.Millisecond)
+	if dbsize() != 3 {
+		t.Fatalf("expected size 3 before expiry, got %d", dbsize())
+	}
+
+	time.Sleep(20 * time.Millisecond)
+	if dbsize() != 2 {
+		t.Fatalf("expected size 2 after expiry, got %d", dbsize())
+	}
+}

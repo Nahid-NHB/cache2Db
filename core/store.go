@@ -133,3 +133,97 @@ func ttlSeconds(k string) int64 {
 
 	return int64(math.Ceil(time.Until(e.expiresAt).Seconds()))
 }
+
+// keysMatching returns all non-expired keys matching a glob pattern.
+// Pattern supports * (any chars), ? (single char), [abc] (one of).
+func keysMatching(pattern string) []string {
+	store.RLock()
+	defer store.RUnlock()
+
+	var result []string
+	for k, e := range store.data {
+		if e.expired() {
+			continue
+		}
+		if matchGlob(k, pattern) {
+			result = append(result, k)
+		}
+	}
+	return result
+}
+
+// dbsize returns the count of non-expired keys in the store.
+func dbsize() int {
+	store.RLock()
+	defer store.RUnlock()
+
+	count := 0
+	for _, e := range store.data {
+		if !e.expired() {
+			count++
+		}
+	}
+	return count
+}
+
+// matchGlob matches a string against a glob pattern.
+// Supports: * (any sequence), ? (single char), [abc] (char class)
+func matchGlob(s, pattern string) bool {
+	return globMatch(s, pattern, 0, 0)
+}
+
+func globMatch(s, pattern string, si, pi int) bool {
+	if pi == len(pattern) {
+		return si == len(s)
+	}
+
+	switch pattern[pi] {
+	case '*':
+		if pi+1 == len(pattern) {
+			return true
+		}
+		for i := si; i <= len(s); i++ {
+			if globMatch(s, pattern, i, pi+1) {
+				return true
+			}
+		}
+		return false
+
+	case '?':
+		if si >= len(s) {
+			return false
+		}
+		return globMatch(s, pattern, si+1, pi+1)
+
+	case '[':
+		if si >= len(s) {
+			return false
+		}
+		pj := pi + 1
+		negate := false
+		if pj < len(pattern) && pattern[pj] == '^' {
+			negate = true
+			pj++
+		}
+		found := false
+		for pj < len(pattern) && pattern[pj] != ']' {
+			if pattern[pj] == s[si] {
+				found = true
+			}
+			pj++
+		}
+		if negate {
+			found = !found
+		}
+		if !found {
+			return false
+		}
+		return globMatch(s, pattern, si+1, pj+1)
+
+	default:
+		if si >= len(s) || s[si] != pattern[pi] {
+			return false
+		}
+		return globMatch(s, pattern, si+1, pi+1)
+	}
+}

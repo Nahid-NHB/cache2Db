@@ -39,6 +39,12 @@ func EvalAndRespond(cmd *RedisCmd, c net.Conn) error {
 	case "SAVE":
 		return evalSAVE(cmd.Args, c)
 
+	case "KEYS":
+		return evalKEYS(cmd.Args, c)
+
+	case "DBSIZE":
+		return evalDBSIZE(cmd.Args, c)
+
 	default:
 		return errors.New("ERR unknown command '" + cmd.Cmd + "'")
 	}
@@ -202,5 +208,32 @@ func evalEXISTS(args []string, c net.Conn) error {
 	}
 
 	_, err := c.Write(Encode(count, false))
+	return err
+}
+
+func evalKEYS(args []string, c net.Conn) error {
+
+	if len(args) != 1 {
+		return errors.New("ERR wrong number of arguments for 'keys' command")
+	}
+
+	keys := keysMatching(args[0])
+	var result []interface{}
+	for _, k := range keys {
+		result = append(result, []byte(k))
+	}
+
+	_, err := c.Write(Encode(result, false))
+	return err
+}
+
+func evalDBSIZE(args []string, c net.Conn) error {
+
+	if len(args) != 0 {
+		return errors.New("ERR wrong number of arguments for 'dbsize' command")
+	}
+
+	size := dbsize()
+	_, err := c.Write(Encode(size, false))
 	return err
 }
